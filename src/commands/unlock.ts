@@ -1,5 +1,6 @@
 import type { Message } from 'discord.js';
-import { channelStore } from '../store/channelStore';
+import { formatVcName, stripLockFromName } from '../utils/channelName';
+import { channelStoreImpl } from '../store';
 import { getPermissionOverwriteErrorMessage } from '../utils/discordErrors';
 import { log } from '../utils/logger';
 import { canEditPermissionOverwrite } from '../utils/roleHierarchy';
@@ -20,7 +21,7 @@ export default {
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!unlock validation failed: not owner (owner=${ownerId})`);
       await message.reply('You can only unlock your own temporary voice channel.');
@@ -31,7 +32,7 @@ export default {
       const guild = message.guild!;
       await voiceChannel.permissionOverwrites.delete(guild.id);
 
-      const entry = channelStore.get(voiceChannel.id);
+      const entry = await channelStoreImpl.get(voiceChannel.id);
       if (entry) {
         if (canEditPermissionOverwrite(guild, member)) {
           await voiceChannel.permissionOverwrites.delete(member.id);
@@ -43,6 +44,9 @@ export default {
           }
         }
       }
+
+      const baseName = stripLockFromName(voiceChannel.name).replace(/'s VC$/, '');
+      await voiceChannel.setName(formatVcName(baseName, false));
 
       log.cmd.info(`!!unlock success channel=${voiceChannel.id}`);
       await message.reply('Your voice channel is now unlocked. Anyone can join.');

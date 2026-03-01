@@ -1,8 +1,7 @@
 import { Events, ChannelType, VoiceState, VoiceChannel } from 'discord.js';
 import config from '../../config';
-import { channelStore } from '../store/channelStore';
-import { votekickStore } from '../store/votekickStore';
-import { sanitizeChannelName } from '../utils/channelName';
+import { channelStoreImpl, votekickStoreImpl } from '../store';
+import { capitalizeName, formatVcName, sanitizeChannelName } from '../utils/channelName';
 import { getPermissionOverwriteErrorMessage } from '../utils/discordErrors';
 import { log } from '../utils/logger';
 import { canEditPermissionOverwrite } from '../utils/roleHierarchy';
@@ -38,13 +37,13 @@ export default {
 
       if (channelName.toLowerCase() === TRIGGER_NAME.toLowerCase()) {
         await handleTriggerJoin(newState);
-      } else if (channelStore.has(channel.id)) {
+      } else if (await channelStoreImpl.has(channel.id)) {
         log.voice.info(`user joined temp VC ${channel.name} (${channel.id}), clearing cleanup`);
-        channelStore.clearCleanupTimeout(channel.id);
+        await channelStoreImpl.clearCleanupTimeout(channel.id);
       }
     }
 
-    if (oldCh && channelStore.has(oldCh.id) && channelStore.getOwner(oldCh.id) === userId) {
+    if (oldCh && (await channelStoreImpl.has(oldCh.id)) && (await channelStoreImpl.getOwner(oldCh.id)) === userId) {
       if (oldCh.members.size > 0) {
         await handleOwnerLeft(oldState);
       }
@@ -65,7 +64,7 @@ async function handleTriggerJoin(newState: VoiceState): Promise<void> {
   );
 
   try {
-    const baseName = sanitizeChannelName(member.user.username);
+    const baseName = capitalizeName(sanitizeChannelName(member.user.username));
     const channelName = `${baseName}'s VC`;
 
     const newChannel = await guild.channels.create({
@@ -79,7 +78,7 @@ async function handleTriggerJoin(newState: VoiceState): Promise<void> {
 
     await member.voice.setChannel(newChannel);
     log.voice.info(`moved user ${member.user.tag} to ${newChannel.name} (${newChannel.id})`);
-    channelStore.register(newChannel.id, member.id);
+    await channelStoreImpl.register(newChannel.id, member.id);
   } catch (error) {
     log.voice.error('Failed to create temp VC:', error);
   }
@@ -88,37 +87,40 @@ async function handleTriggerJoin(newState: VoiceState): Promise<void> {
 async function handleChannelEmpty(oldState: VoiceState): Promise<void> {
   const channel = oldState.channel;
   if (!channel || channel.members.size > 0) return;
-  if (!channelStore.has(channel.id)) return;
+  if (!(await channelStoreImpl.has(channel.id))) return;
 
   log.voice.info(
     `temp channel ${channel.name} (${channel.id}) is empty, scheduling cleanup in ${CLEANUP_DELAY}ms`
   );
 
-  const timeoutId = setTimeout(async () => {
-    try {
-      const fetchedChannel = await channel.guild.channels.fetch(channel.id).catch(() => null);
-      const voiceChannel = fetchedChannel?.isVoiceBased?.()
-        ? (fetchedChannel as VoiceChannel)
-        : null;
-      if (!voiceChannel || voiceChannel.members.size > 0) {
-        log.voice.info(
-          `channel ${channel.id} no longer empty or missing, cancelling delete`
-        );
-        votekickStore.remove(channel.id);
-        channelStore.unregister(channel.id);
-        return;
+  if (config.redisUrl) {
+    await channelStoreImpl.setCleanupTimeout(channel.id);
+  } else {
+    const timeoutId = setTimeout(async () => {
+      try {
+        const fetchedChannel = await channel.guild.channels.fetch(channel.id).catch(() => null);
+        const voiceChannel = fetchedChannel?.isVoiceBased?.()
+          ? (fetchedChannel as VoiceChannel)
+          : null;
+        if (!voiceChannel || voiceChannel.members.size > 0) {
+          log.voice.info(
+            `channel ${channel.id} no longer empty or missing, cancelling delete`
+          );
+          await votekickStoreImpl.remove(channel.id);
+          await channelStoreImpl.unregister(channel.id);
+          return;
+        }
+        await voiceChannel.delete();
+        log.voice.info(`channel ${channel.id} deleted (was empty)`);
+      } catch (error) {
+        log.voice.error('Failed to delete empty temp VC:', error);
+      } finally {
+        await votekickStoreImpl.remove(channel.id);
+        await channelStoreImpl.unregister(channel.id);
       }
-      await voiceChannel.delete();
-      log.voice.info(`channel ${channel.id} deleted (was empty)`);
-    } catch (error) {
-      log.voice.error('Failed to delete empty temp VC:', error);
-    } finally {
-      votekickStore.remove(channel.id);
-      channelStore.unregister(channel.id);
-    }
-  }, CLEANUP_DELAY);
-
-  channelStore.setCleanupTimeout(channel.id, timeoutId);
+    }, CLEANUP_DELAY);
+    await channelStoreImpl.setCleanupTimeout(channel.id, timeoutId);
+  }
 }
 
 async function handleOwnerLeft(oldState: VoiceState): Promise<void> {
@@ -136,10 +138,11 @@ async function handleOwnerLeft(oldState: VoiceState): Promise<void> {
   );
 
   try {
-    channelStore.setOwner(channel.id, newOwner.id);
+    await channelStoreImpl.setOwner(channel.id, newOwner.id);
 
-    const baseName = sanitizeChannelName(newOwner.user.username);
-    await channel.setName(`${baseName}'s VC`);
+    const baseName = capitalizeName(sanitizeChannelName(newOwner.user.username));
+    const isLocked = channel.permissionOverwrites.cache.has(channel.guildId);
+    await channel.setName(formatVcName(baseName, isLocked));
 
     const hasGuildOverwrite = channel.permissionOverwrites.cache.has(channel.guildId);
     if (hasGuildOverwrite) {

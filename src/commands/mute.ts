@@ -1,5 +1,5 @@
 import type { Message } from 'discord.js';
-import { channelStore } from '../store/channelStore';
+import { channelStoreImpl } from '../store';
 import { log } from '../utils/logger';
 
 export default {
@@ -19,13 +19,13 @@ export default {
       return;
     }
 
-    if (!channelStore.has(voiceChannel.id)) {
+    if (!(await channelStoreImpl.has(voiceChannel.id))) {
       log.cmd.info(`!!mute validation failed: not a temp VC`);
       await message.reply('This command only works in temporary voice channels.');
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!mute validation failed: not owner (owner=${ownerId})`);
       await message.reply('Only the voice channel owner can mute users.');

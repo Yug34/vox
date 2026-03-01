@@ -1,5 +1,5 @@
 import type { Message } from 'discord.js';
-import { channelStore } from '../store/channelStore';
+import { channelStoreImpl } from '../store';
 import { getPermissionOverwriteErrorMessage } from '../utils/discordErrors';
 import { log } from '../utils/logger';
 import { canEditPermissionOverwrite } from '../utils/roleHierarchy';
@@ -27,14 +27,14 @@ export default {
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!revoke validation failed: not owner (owner=${ownerId})`);
       await message.reply('You can only revoke users in your own temporary voice channel.');
       return;
     }
 
-    const entry = channelStore.get(voiceChannel.id);
+    const entry = await channelStoreImpl.get(voiceChannel.id);
     if (!entry?.permittedUserIds.has(targetUser.id)) {
       log.cmd.info(`!!revoke validation failed: user not on permitted list`);
       await message.reply('That user is not on the permitted list.');
@@ -53,7 +53,7 @@ export default {
         return;
       }
 
-      channelStore.removePermitted(voiceChannel.id, targetUser.id);
+      await channelStoreImpl.removePermitted(voiceChannel.id, targetUser.id);
       await voiceChannel.permissionOverwrites.delete(targetUser.id);
 
       log.cmd.info(`!!revoke success channel=${voiceChannel.id} revoked=${targetUser.id}`);

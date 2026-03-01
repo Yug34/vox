@@ -1,15 +1,11 @@
 import { log } from '../utils/logger';
-
-interface ChannelEntry {
-  ownerId: string;
-  permittedUserIds: Set<string>;
-}
+import type { ChannelEntry } from './types';
 
 const store = new Map<string, ChannelEntry>();
 const cleanupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const channelStore = {
-  register(channelId: string, ownerId: string): void {
+  async register(channelId: string, ownerId: string): Promise<void> {
     store.set(channelId, {
       ownerId,
       permittedUserIds: new Set(),
@@ -17,11 +13,11 @@ export const channelStore = {
     log.store.info(`register channel=${channelId} owner=${ownerId}`);
   },
 
-  getOwner(channelId: string): string | null {
+  async getOwner(channelId: string): Promise<string | null> {
     return store.get(channelId)?.ownerId ?? null;
   },
 
-  setOwner(channelId: string, newOwnerId: string): void {
+  async setOwner(channelId: string, newOwnerId: string): Promise<void> {
     const entry = store.get(channelId);
     if (entry) {
       entry.permittedUserIds.delete(newOwnerId);
@@ -30,17 +26,17 @@ export const channelStore = {
     }
   },
 
-  get(channelId: string): ChannelEntry | null {
+  async get(channelId: string): Promise<ChannelEntry | null> {
     return store.get(channelId) ?? null;
   },
 
-  isPermitted(channelId: string, userId: string): boolean {
+  async isPermitted(channelId: string, userId: string): Promise<boolean> {
     const entry = store.get(channelId);
     if (!entry) return false;
     return entry.ownerId === userId || entry.permittedUserIds.has(userId);
   },
 
-  addPermitted(channelId: string, userId: string): void {
+  async addPermitted(channelId: string, userId: string): Promise<void> {
     const entry = store.get(channelId);
     if (entry) {
       entry.permittedUserIds.add(userId);
@@ -48,7 +44,7 @@ export const channelStore = {
     }
   },
 
-  removePermitted(channelId: string, userId: string): void {
+  async removePermitted(channelId: string, userId: string): Promise<void> {
     const entry = store.get(channelId);
     if (entry) {
       entry.permittedUserIds.delete(userId);
@@ -56,7 +52,7 @@ export const channelStore = {
     }
   },
 
-  unregister(channelId: string): void {
+  async unregister(channelId: string): Promise<void> {
     store.delete(channelId);
     const timeoutId = cleanupTimeouts.get(channelId);
     if (timeoutId) {
@@ -66,16 +62,21 @@ export const channelStore = {
     log.store.info(`unregister channel=${channelId}`);
   },
 
-  has(channelId: string): boolean {
+  async has(channelId: string): Promise<boolean> {
     return store.has(channelId);
   },
 
-  setCleanupTimeout(channelId: string, timeoutId: ReturnType<typeof setTimeout>): void {
-    cleanupTimeouts.set(channelId, timeoutId);
-    log.store.info(`setCleanupTimeout channel=${channelId}`);
+  async setCleanupTimeout(
+    channelId: string,
+    timeoutId?: ReturnType<typeof setTimeout>
+  ): Promise<void> {
+    if (timeoutId) {
+      cleanupTimeouts.set(channelId, timeoutId);
+      log.store.info(`setCleanupTimeout channel=${channelId}`);
+    }
   },
 
-  clearCleanupTimeout(channelId: string): void {
+  async clearCleanupTimeout(channelId: string): Promise<void> {
     const timeoutId = cleanupTimeouts.get(channelId);
     if (timeoutId) {
       clearTimeout(timeoutId);

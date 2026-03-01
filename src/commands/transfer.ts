@@ -1,5 +1,5 @@
 import type { Message } from 'discord.js';
-import { channelStore } from '../store/channelStore';
+import { channelStoreImpl } from '../store';
 import { sanitizeChannelName } from '../utils/channelName';
 import { getPermissionOverwriteErrorMessage } from '../utils/discordErrors';
 import { log } from '../utils/logger';
@@ -22,14 +22,14 @@ export default {
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!transfer validation failed: not owner (owner=${ownerId})`);
       await message.reply('Only the voice channel owner can transfer ownership.');
       return;
     }
 
-    if (!channelStore.has(voiceChannel.id)) {
+    if (!(await channelStoreImpl.has(voiceChannel.id))) {
       log.cmd.info(`!!transfer validation failed: not a temp VC`);
       await message.reply('This command only works in temporary voice channels.');
       return;
@@ -77,7 +77,7 @@ export default {
       }
 
       const oldOwnerId = member.id;
-      channelStore.setOwner(voiceChannel.id, targetUser.id);
+      await channelStoreImpl.setOwner(voiceChannel.id, targetUser.id);
 
       const baseName = sanitizeChannelName(targetUser.username);
       await voiceChannel.setName(`${baseName}'s VC`);

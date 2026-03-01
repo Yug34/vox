@@ -1,5 +1,5 @@
 import type { Message } from 'discord.js';
-import { channelStore } from '../store/channelStore';
+import { channelStoreImpl } from '../store';
 import { getPermissionOverwriteErrorMessage } from '../utils/discordErrors';
 import { log } from '../utils/logger';
 import { canEditPermissionOverwrite } from '../utils/roleHierarchy';
@@ -27,7 +27,7 @@ export default {
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!permit validation failed: not owner (owner=${ownerId})`);
       await message.reply('You can only permit users in your own temporary voice channel.');
@@ -58,7 +58,7 @@ export default {
         return;
       }
 
-      channelStore.addPermitted(voiceChannel.id, targetUser.id);
+      await channelStoreImpl.addPermitted(voiceChannel.id, targetUser.id);
       await voiceChannel.permissionOverwrites.edit(targetUser.id, {
         Connect: true,
       });

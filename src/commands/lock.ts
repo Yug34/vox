@@ -1,6 +1,7 @@
 import type { Message } from 'discord.js';
-import { channelStore } from '../store/channelStore';
+import { channelStoreImpl } from '../store';
 import { getPermissionOverwriteErrorMessage } from '../utils/discordErrors';
+import { formatVcName, stripLockFromName } from '../utils/channelName';
 import { log } from '../utils/logger';
 import { canEditPermissionOverwrite } from '../utils/roleHierarchy';
 
@@ -20,7 +21,7 @@ export default {
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!lock validation failed: not owner (owner=${ownerId})`);
       await message.reply('You can only lock your own temporary voice channel.');
@@ -39,7 +40,7 @@ export default {
         });
       }
 
-      const entry = channelStore.get(voiceChannel.id);
+      const entry = await channelStoreImpl.get(voiceChannel.id);
       for (const userId of entry?.permittedUserIds ?? []) {
         const targetMember = guild.members.cache.get(userId) ?? null;
         if (canEditPermissionOverwrite(guild, targetMember)) {
@@ -48,6 +49,9 @@ export default {
           });
         }
       }
+
+      const baseName = stripLockFromName(voiceChannel.name).replace(/'s VC$/, '');
+      await voiceChannel.setName(formatVcName(baseName, true));
 
       log.cmd.info(`!!lock success channel=${voiceChannel.id}`);
       await message.reply('Your voice channel is now locked. Only you and permitted users can join.');

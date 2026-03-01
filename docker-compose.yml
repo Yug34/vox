@@ -1,0 +1,33 @@
+name: vox-bot-dev
+
+services:
+  redis:
+    image: redis:latest
+    container_name: vox-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vox-network
+
+  bot:
+    build: .
+    container_name: vox-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - vox-network
+
+volumes:
+  redis_data:
+
+networks:
+  vox-network:
+    driver: bridge

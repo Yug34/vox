@@ -1,7 +1,6 @@
 import type { Message } from 'discord.js';
 import config from '../../config';
-import { channelStore } from '../store/channelStore';
-import { votekickStore } from '../store/votekickStore';
+import { channelStoreImpl, votekickStoreImpl, useRedis } from '../store';
 import { log } from '../utils/logger';
 
 export default {
@@ -21,14 +20,14 @@ export default {
       return;
     }
 
-    const ownerId = channelStore.getOwner(voiceChannel.id);
+    const ownerId = await channelStoreImpl.getOwner(voiceChannel.id);
     if (ownerId !== member?.id) {
       log.cmd.info(`!!votekick validation failed: not owner (owner=${ownerId})`);
       await message.reply('Only the voice channel owner can start a votekick.');
       return;
     }
 
-    if (!channelStore.has(voiceChannel.id)) {
+    if (!(await channelStoreImpl.has(voiceChannel.id))) {
       log.cmd.info(`!!votekick validation failed: not a temp VC`);
       await message.reply('This command only works in temporary voice channels.');
       return;
@@ -59,7 +58,7 @@ export default {
       return;
     }
 
-    if (votekickStore.has(voiceChannel.id)) {
+    if (await votekickStoreImpl.has(voiceChannel.id)) {
       log.cmd.info(`!!votekick validation failed: votekick already active`);
       await message.reply('A votekick is already in progress for this channel.');
       return;
@@ -87,41 +86,46 @@ export default {
       });
 
       const channelId = voiceChannel.id;
-      const timeoutId = setTimeout(async () => {
-        votekickStore.remove(channelId);
-
-        try {
-          const fetchedMsg = await textChannel.messages.fetch(pollMsg.id);
-          const poll = fetchedMsg.poll;
-          if (!poll) return;
-
-          const yesAnswer = poll.answers.find((a) => a.text === 'Yes');
-          const noAnswer = poll.answers.find((a) => a.text === 'No');
-          const yesCount = yesAnswer?.voteCount ?? 0;
-          const noCount = noAnswer?.voteCount ?? 0;
-
-          if (yesCount > noCount) {
-            const guild = message.guild;
-            const currentTarget = guild?.members.cache.get(targetUser.id);
-            if (currentTarget?.voice.channelId === channelId) {
-              await currentTarget.voice.setChannel(null);
-              await textChannel.send(`${targetUser.tag} was votekicked from the voice channel.`);
-            }
-          } else {
-            await textChannel.send(`Votekick failed. ${targetUser.tag} stays in the voice channel.`);
-          }
-        } catch (error) {
-          log.cmd.error('Votekick expiry handler error:', error);
-        }
-      }, durationMs);
-
-      votekickStore.set(voiceChannel.id, {
+      const baseEntry = {
         targetUserId: targetUser.id,
         channelId: voiceChannel.id,
         textChannelId: message.channel.id,
         messageId: pollMsg.id,
-        timeoutId,
-      });
+      };
+
+      if (useRedis) {
+        await votekickStoreImpl.set(voiceChannel.id, baseEntry);
+      } else {
+        const timeoutId = setTimeout(async () => {
+          await votekickStoreImpl.remove(channelId);
+
+          try {
+            const fetchedMsg = await textChannel.messages.fetch(pollMsg.id);
+            const poll = fetchedMsg.poll;
+            if (!poll) return;
+
+            const yesAnswer = poll.answers.find((a) => a.text === 'Yes');
+            const noAnswer = poll.answers.find((a) => a.text === 'No');
+            const yesCount = yesAnswer?.voteCount ?? 0;
+            const noCount = noAnswer?.voteCount ?? 0;
+
+            if (yesCount > noCount) {
+              const guild = message.guild;
+              const currentTarget = guild?.members.cache.get(targetUser.id);
+              if (currentTarget?.voice.channelId === channelId) {
+                await currentTarget.voice.setChannel(null);
+                await textChannel.send(`${targetUser.tag} was votekicked from the voice channel.`);
+              }
+            } else {
+              await textChannel.send(`Votekick failed. ${targetUser.tag} stays in the voice channel.`);
+            }
+          } catch (error) {
+            log.cmd.error('Votekick expiry handler error:', error);
+          }
+        }, durationMs);
+
+        await votekickStoreImpl.set(voiceChannel.id, { ...baseEntry, timeoutId });
+      }
 
       log.cmd.info(`!!votekick success channel=${voiceChannel.id} target=${targetUser.id}`);
       await message.reply(`Votekick poll started. Voting ends in ${durationHours} hour(s).`);
