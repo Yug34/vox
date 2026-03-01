@@ -78,7 +78,7 @@ async function handleTriggerJoin(newState: VoiceState): Promise<void> {
 
     await member.voice.setChannel(newChannel);
     log.voice.info(`moved user ${member.user.tag} to ${newChannel.name} (${newChannel.id})`);
-    await channelStoreImpl.register(newChannel.id, member.id);
+    await channelStoreImpl.register(newChannel.id, member.id, guild.id);
   } catch (error) {
     log.voice.error('Failed to create temp VC:', error);
   }

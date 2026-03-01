@@ -10,7 +10,11 @@ const VOTEKICK_SWEEP_INTERVAL_MS = 5000;
 
 async function sweepChannelCleanups(client: Client): Promise<void> {
   if (channelStoreImpl !== redisChannelStore) return;
-  const channelIds = await redisChannelStore.getChannelsPendingCleanup();
+  const shardIds = config.shardIds;
+  const channelIds = await redisChannelStore.getChannelsPendingCleanup({
+    shardIds,
+    shardCount: config.shardCount,
+  });
   for (const channelId of channelIds) {
     try {
       const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -32,7 +36,11 @@ async function sweepChannelCleanups(client: Client): Promise<void> {
 
 async function sweepVotekickExpiry(client: Client): Promise<void> {
   if (votekickStoreImpl !== redisVotekickStore) return;
-  const expired = await redisVotekickStore.getExpiredVotekicks();
+  const shardIds = config.shardIds;
+  const expired = await redisVotekickStore.getExpiredVotekicks({
+    shardIds,
+    shardCount: config.shardCount,
+  });
   for (const entry of expired) {
     try {
       await votekickStoreImpl.remove(entry.channelId);

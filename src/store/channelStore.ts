@@ -5,7 +5,7 @@ const store = new Map<string, ChannelEntry>();
 const cleanupTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const channelStore = {
-  async register(channelId: string, ownerId: string): Promise<void> {
+  async register(channelId: string, ownerId: string, _guildId?: string): Promise<void> {
     store.set(channelId, {
       ownerId,
       permittedUserIds: new Set(),

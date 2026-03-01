@@ -2,6 +2,7 @@ import config from '../../config';
 import { log } from '../utils/logger';
 import type { VotekickEntry } from './types';
 import { getRedis } from './redis';
+import { getShardForGuild } from './redisChannelStore';
 
 const VOTEKICK_PREFIX = 'votekick:';
 
@@ -54,20 +55,30 @@ export const redisVotekickStore = {
     log.store.info(`votekick remove channel=${channelId}`);
   },
 
-  async getExpiredVotekicks(): Promise<VotekickEntry[]> {
+  async getExpiredVotekicks(options?: {
+    shardIds?: number[];
+    shardCount?: number;
+  }): Promise<VotekickEntry[]> {
     const r = getRedis();
     if (!r) return [];
     const keys = await r.keys(`${VOTEKICK_PREFIX}*`);
     const expired: VotekickEntry[] = [];
     const now = Date.now();
+    const { shardIds, shardCount } = options ?? {};
+
     for (const k of keys) {
       const raw = await r.get(k);
       if (!raw) continue;
       try {
         const entry = JSON.parse(raw) as VotekickEntry;
-        if (entry.expiresAt <= now) {
-          expired.push(entry);
+        if (entry.expiresAt > now) continue;
+
+        if (shardIds != null && shardCount != null && entry.guildId) {
+          const shard = getShardForGuild(entry.guildId, shardCount);
+          if (!shardIds.includes(shard)) continue;
         }
+
+        expired.push(entry);
       } catch {
         // ignore
       }

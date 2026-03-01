@@ -14,11 +14,14 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+  shards: config.shardIds.length === 1 ? config.shardIds[0]! : config.shardIds,
+  shardCount: config.shardCount,
 });
 
 await loadEvents(client);
 
-client.login(config.token).catch((err) => {
-  console.error('Failed to login:', err);
-  process.exit(1);
-});
+await client.login(config.token);
+
+if (config.shardCount > 1) {
+  console.log(`Running shards ${config.shardIds.join(', ')} of ${config.shardCount} total`);
+}

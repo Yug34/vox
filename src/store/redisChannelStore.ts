@@ -9,6 +9,7 @@ const CLEANUP_INTERVAL_MS = 3000;
 interface ChannelData {
   ownerId: string;
   permittedUserIds: string[];
+  guildId?: string;
   cleanupAt?: number;
 }
 
@@ -40,13 +41,19 @@ async function del(channelId: string): Promise<void> {
   await r.del(key(channelId));
 }
 
+/** Discord shard formula: which shard owns a guild */
+export function getShardForGuild(guildId: string, shardCount: number): number {
+  return Number((BigInt(guildId) >> 22n) % BigInt(shardCount));
+}
+
 export const redisChannelStore = {
-  async register(channelId: string, ownerId: string): Promise<void> {
+  async register(channelId: string, ownerId: string, guildId?: string): Promise<void> {
     await setData(channelId, {
       ownerId,
       permittedUserIds: [],
+      guildId,
     });
-    log.store.info(`register channel=${channelId} owner=${ownerId}`);
+    log.store.info(`register channel=${channelId} owner=${ownerId} guild=${guildId ?? '?'}`);
   },
 
   async getOwner(channelId: string): Promise<string | null> {
@@ -128,20 +135,30 @@ export const redisChannelStore = {
     }
   },
 
-  async getChannelsPendingCleanup(): Promise<string[]> {
+  async getChannelsPendingCleanup(options?: {
+    shardIds?: number[];
+    shardCount?: number;
+  }): Promise<string[]> {
     const r = getRedis();
     if (!r) return [];
     const keys = await r.keys(`${VC_PREFIX}*`);
     const channelIds: string[] = [];
     const now = Date.now();
+    const { shardIds, shardCount } = options ?? {};
+
     for (const k of keys) {
       const raw = await r.get(k);
       if (!raw) continue;
       try {
         const data = JSON.parse(raw) as ChannelData;
-        if (data.cleanupAt !== undefined && data.cleanupAt <= now) {
-          channelIds.push(k.slice(VC_PREFIX.length));
+        if (data.cleanupAt === undefined || data.cleanupAt > now) continue;
+
+        if (shardIds != null && shardCount != null && data.guildId) {
+          const shard = getShardForGuild(data.guildId, shardCount);
+          if (!shardIds.includes(shard)) continue;
         }
+
+        channelIds.push(k.slice(VC_PREFIX.length));
       } catch {
         // ignore parse errors
       }

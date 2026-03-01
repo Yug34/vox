@@ -81,8 +81,38 @@ All VC commands require you to be in your own temporary voice channel (or be the
 | `TRIGGER_CHANNEL_NAME`    | Name of the channel that triggers creation | "Create Your Own VC" |
 | `CLEANUP_DELAY_MS`        | Delay before deleting empty channels (ms)  | 5000                 |
 | `VOTEKICK_DURATION_HOURS` | Duration of votekick polls in hours        | 1                    |
+| `REDIS_URL`               | Redis connection URL for persistent state  | Optional (in-memory) |
+| `SHARD_COUNT`             | Total shards across all processes          | 1                    |
+| `SHARD_IDS`               | Comma-separated shard IDs this process runs (e.g. `0,1`) | 0 (single shard) |
 
 Bun loads `.env` automatically from the project root.
+
+### Redis (optional)
+
+Set `REDIS_URL` (e.g. `redis://localhost:6379`) to persist channel ownership and votekick state across restarts. Required for horizontal scaling with multiple shards.
+
+### Sharding (optional)
+
+For horizontal scaling, set `SHARD_COUNT` and `SHARD_IDS` per process. Example with 4 shards across 2 processes:
+
+- Process 1: `SHARD_COUNT=4` `SHARD_IDS=0,1`
+- Process 2: `SHARD_COUNT=4` `SHARD_IDS=2,3`
+
+Requires `REDIS_URL` so channel and votekick state is shared across shards.
+
+### Docker
+
+```bash
+# Local dev with Redis
+docker compose up -d redis
+# Set REDIS_URL=redis://localhost:6379 in .env, then:
+bun run start
+
+# Or run bot in Docker too
+docker compose up -d
+```
+
+Ensure `.env` has `DISCORD_TOKEN` and `CLIENT_ID` before running the bot container.
 
 ## Bot Permissions
 

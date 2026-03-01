@@ -86,11 +86,13 @@ export default {
       });
 
       const channelId = voiceChannel.id;
+      const guildId = message.guild?.id;
       const baseEntry = {
         targetUserId: targetUser.id,
         channelId: voiceChannel.id,
         textChannelId: message.channel.id,
         messageId: pollMsg.id,
+        guildId,
       };
 
       if (useRedis) {

@@ -1,6 +1,7 @@
 export interface ChannelEntry {
   ownerId: string;
   permittedUserIds: Set<string>;
+  guildId?: string;
 }
 
 export interface VotekickEntry {
@@ -8,5 +9,6 @@ export interface VotekickEntry {
   channelId: string;
   textChannelId: string;
   messageId: string;
+  guildId?: string;
   expiresAt: number;
 }
